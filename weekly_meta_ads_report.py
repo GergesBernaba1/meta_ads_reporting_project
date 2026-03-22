@@ -4,6 +4,19 @@ import shlex
 import argparse
 from datetime import datetime, timedelta
 
+
+def _load_env(path=".env"):
+    if not os.path.exists(path):
+        return
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                os.environ.setdefault(key.strip(), value.strip())
+
+_load_env()
+
 import pandas as pd
 import smtplib
 from email.mime.text import MIMEText
@@ -14,9 +27,13 @@ from email.mime.multipart import MIMEMultipart
 # Email
 # ---------------------------------------------------------------------------
 
+_DEFAULT_SMTP_SERVER = "smtp.gmail.com"
+_DEFAULT_SMTP_PORT = 587
+_ATTACHMENT_MIME_SUBTYPE = "markdown"
+
 def send_email(to_email, subject, body, attachment_path=None):
-    smtp_server = "smtp.gmail.com"
-    smtp_port = 587
+    smtp_server = os.environ.get("SMTP_SERVER", _DEFAULT_SMTP_SERVER)
+    smtp_port = int(os.environ.get("SMTP_PORT", _DEFAULT_SMTP_PORT))
     sender_email = os.environ.get("SMTP_EMAIL")
     sender_password = os.environ.get("SMTP_PASSWORD")
 
@@ -32,7 +49,7 @@ def send_email(to_email, subject, body, attachment_path=None):
     if attachment_path:
         safe_path = os.path.realpath(attachment_path)
         with open(safe_path, "r") as f:
-            attachment = MIMEText(f.read(), "markdown")
+            attachment = MIMEText(f.read(), _ATTACHMENT_MIME_SUBTYPE)
             attachment.add_header("Content-Disposition", "attachment", filename=os.path.basename(safe_path))
             msg.attach(attachment)
 
@@ -218,7 +235,7 @@ def main():
     parser.add_argument("--account_id", type=str, required=True, help="Ad account ID (e.g., act_123456789).")
     parser.add_argument("--start_date", type=str, help="Start date YYYY-MM-DD (default: 7 days ago).")
     parser.add_argument("--end_date", type=str, help="End date YYYY-MM-DD (default: yesterday).")
-    parser.add_argument("--email", type=str, default="gergesbernaba2@gmail.com", help="Recipient email.")
+    parser.add_argument("--email", type=str, default=None, help="Recipient email address.")
     parser.add_argument("--campaign_data_file", type=str, help="Path to campaign data JSON.")
     parser.add_argument("--publisher_data_file", type=str, help="Path to publisher data JSON.")
     parser.add_argument("--gender_data_file", type=str, help="Path to gender data JSON.")
@@ -246,10 +263,11 @@ def main():
             output_dir=args.output_dir
         )
 
-        subject = "Meta Ads Performance Report for {} ({} to {})".format(
-            ad_account_id, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
-        body = "Dear User,\n\nPlease find attached your Meta Ads performance report for account {}.\n\nBest regards,\nMeta Ads Reporter".format(ad_account_id)
-        send_email(args.email, subject, body, report_file)
+        if args.email:
+            subject = "Meta Ads Performance Report for {} ({} to {})".format(
+                ad_account_id, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
+            body = "Dear User,\n\nPlease find attached your Meta Ads performance report for account {}.\n\nBest regards,\nMeta Ads Reporter".format(ad_account_id)
+            send_email(args.email, subject, body, report_file)
     else:
         date_range = {"since": start_date.strftime("%Y-%m-%d"), "until": end_date.strftime("%Y-%m-%d")}
         print("MCP_COMMAND_START")
